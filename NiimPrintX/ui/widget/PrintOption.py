@@ -82,33 +82,72 @@ class PrintOption:
         self.root.after(0, lambda: self.root.status_bar.update_status(result))
 
     def display_print(self):
-        # Export to PNG and display it in a pop-up window
-        if self.config.os_system == "Windows":
-            # Windows-specific logic using tempfile.mkstemp()
-            fd, tmp_file_path = tempfile.mkstemp(suffix=".png")
-            try:
-                self.export_to_png(tmp_file_path)  # Save to file
-                self.display_image_in_popup(tmp_file_path)  # Display in pop-up window
-            finally:
-                os.close(fd)  # Close the file descriptor
-                os.remove(tmp_file_path)  # Remove the temporary file
+        current_tab_text = self.root.tab_control.tab(self.root.tab_control.select(), "text")
+
+        if current_tab_text == "QR Code":
+            qr_image = self.root.qr_code_tab.get_qr_code_image()
+            if qr_image:
+                # Save the QR code image to a temporary file and display it
+                if self.config.os_system == "Windows":
+                    fd, tmp_file_path = tempfile.mkstemp(suffix=".png")
+                    try:
+                        qr_image.save(tmp_file_path)  # Save to file
+                        self.display_image_in_popup(tmp_file_path)  # Display in pop-up window
+                    finally:
+                        os.close(fd)  # Close the file descriptor
+                        os.remove(tmp_file_path)  # Remove the temporary file
+                else:
+                    with tempfile.NamedTemporaryFile(suffix=".png") as tmp_file:
+                        qr_image.save(tmp_file.name)  # Save to file
+                        self.display_image_in_popup(tmp_file.name)
+            else:
+                messagebox.showinfo("QR Code", "No QR Code generated yet.")
         else:
-            with tempfile.NamedTemporaryFile(suffix=".png") as tmp_file:
-                self.export_to_png(tmp_file.name)  # Save to file
-                self.display_image_in_popup(tmp_file.name)
+            # Existing logic for other tabs
+            if self.config.os_system == "Windows":
+                # Windows-specific logic using tempfile.mkstemp()
+                fd, tmp_file_path = tempfile.mkstemp(suffix=".png")
+                try:
+                    self.export_to_png(tmp_file_path)  # Save to file
+                    self.display_image_in_popup(tmp_file_path)  # Display in pop-up window
+                finally:
+                    os.close(fd)  # Close the file descriptor
+                    os.remove(tmp_file_path)  # Remove the temporary file
+            else:
+                with tempfile.NamedTemporaryFile(suffix=".png") as tmp_file:
+                    self.export_to_png(tmp_file.name)  # Save to file
+                    self.display_image_in_popup(tmp_file.name)
 
     def save_image(self):
-        options = {
-            'defaultextension': '.png',
-            'filetypes': [('PNG files', '*.png')],
-            'initialfile': 'niimprintx.png',  # Specify an initial file name
-            'title': 'Save as PNG'
-        }
-        # Open the save as dialog and get the selected file name
-        file_path = filedialog.asksaveasfilename(**options)
-        if file_path:
-            self.export_to_png(file_path)
-            self.display_image_in_popup(file_path)
+        current_tab_text = self.root.tab_control.tab(self.root.tab_control.select(), "text")
+
+        if current_tab_text == "QR Code":
+            qr_image = self.root.qr_code_tab.get_qr_code_image()
+            if qr_image:
+                options = {
+                    'defaultextension': '.png',
+                    'filetypes': [('PNG files', '*.png')],
+                    'initialfile': 'qrcode.png',  # Specify an initial file name
+                    'title': 'Save QR Code as PNG'
+                }
+                file_path = filedialog.asksaveasfilename(**options)
+                if file_path:
+                    qr_image.save(file_path)
+                    self.display_image_in_popup(file_path)
+            else:
+                messagebox.showinfo("QR Code", "No QR Code generated yet to save.")
+        else:
+            options = {
+                'defaultextension': '.png',
+                'filetypes': [('PNG files', '*.png')],
+                'initialfile': 'niimprintx.png',  # Specify an initial file name
+                'title': 'Save as PNG'
+            }
+            # Open the save as dialog and get the selected file name
+            file_path = filedialog.asksaveasfilename(**options)
+            if file_path:
+                self.export_to_png(file_path)
+                self.display_image_in_popup(file_path)
 
     def mm_to_pixels(self, mm):
         inches = mm / 25.4
@@ -135,29 +174,40 @@ class PrintOption:
         ctx = cairo.Context(surface)
         ctx.set_source_rgb(1, 1, 1)  # White background
         ctx.paint()
+        ctx.set_operator(cairo.OPERATOR_OVER) # Explicitly set blending operator
 
         # Drawing images (if any)
         if self.config.image_items:
             for img_id, img_props in self.config.image_items.items():
-                coords = self.config.canvas.coords(img_id)
-                resized_image = ImageTk.getimage(img_props["image"])
+                coords = self.config.canvas.coords(img_id) # These are center coordinates
+                resized_image = ImageTk.getimage(img_props["image"]).convert("RGBA") # Ensure RGBA
                 with io.BytesIO() as buffer:
                     resized_image.save(buffer, format="PNG")
                     buffer.seek(0)
                     img_surface = cairo.ImageSurface.create_from_png(buffer)
-                ctx.set_source_surface(img_surface, coords[0], coords[1])
+                
+                # Calculate top-left coordinates for cairo
+                draw_x = coords[0] - img_surface.get_width() / 2
+                draw_y = coords[1] - img_surface.get_height() / 2
+                
+                ctx.set_source_surface(img_surface, draw_x, draw_y)
                 ctx.paint()
 
         # Drawing text items
         if self.config.text_items:
             for text_id, text_props in self.config.text_items.items():
-                coords = self.config.canvas.coords(text_id)
-                resized_image = ImageTk.getimage(text_props["font_image"])
+                coords = self.config.canvas.coords(text_id) # These are (left_x, middle_y)
+                resized_image = ImageTk.getimage(text_props["font_image"]).convert("RGBA") # Ensure RGBA
                 with io.BytesIO() as buffer:
                     resized_image.save(buffer, format="PNG")
                     buffer.seek(0)
                     img_surface = cairo.ImageSurface.create_from_png(buffer)
-                ctx.set_source_surface(img_surface, coords[0], coords[1])
+
+                # Calculate top-left coordinates for cairo
+                draw_x = coords[0]
+                draw_y = coords[1] - img_surface.get_height() / 2
+
+                ctx.set_source_surface(img_surface, draw_x, draw_y)
                 ctx.paint()
 
         # Create a cropped surface to save

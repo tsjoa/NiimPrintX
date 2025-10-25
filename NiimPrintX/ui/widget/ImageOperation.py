@@ -7,11 +7,12 @@ class ImageOperation:
     def __init__(self, config):
         self.config = config
 
-    def load_image(self, file_path):
-
+    def _load_image_from_file(self, file_path):
         # Open the image and resize if necessary
         image = Image.open(file_path)
+        self.add_image_to_canvas(image)
 
+    def add_image_to_canvas(self, image: Image):
         x1, y1, x2, y2 = self.config.canvas.bbox(self.config.bounding_box)
         canvas_width = x2 - x1
         canvas_height = y2 - y1
@@ -25,8 +26,12 @@ class ImageOperation:
         resized_image = image.convert("RGBA").resize((new_width, new_height), Image.Resampling.LANCZOS)
         img_tk = ImageTk.PhotoImage(resized_image)
 
-        # Add the image to the canvas
-        image_id = self.config.canvas.create_image(0, 0, image=img_tk, anchor="nw")
+        # Add the image to the canvas, centered within the bounding box
+        bbox_x1, bbox_y1, bbox_x2, bbox_y2 = self.config.canvas.bbox(self.config.bounding_box)
+        center_x = (bbox_x1 + bbox_x2) / 2
+        center_y = (bbox_y1 + bbox_y2) / 2
+
+        image_id = self.config.canvas.create_image(center_x, center_y, image=img_tk, anchor="center")
         self.config.image_items[image_id] = {
             "image": img_tk,
             "original_image": resized_image,
@@ -132,7 +137,7 @@ class ImageOperation:
             bbox_coords[3] + 5,
         )
 
-    def delete_image(self):
+    def delete_selected_image(self):
         if self.config.current_selected_image:
             self.config.canvas.delete(self.config.current_selected_image)
             self.config.canvas.delete(self.config.image_items[self.config.current_selected_image]['bbox'])

@@ -11,6 +11,7 @@ from .widget.PrintOption import PrintOption
 
 from NiimPrintX.ui.widget.CanvasSelector import CanvasSelector
 from NiimPrintX.ui.widget.FileMenu import FileMenu
+from .widget.QrCodeTab import QrCodeTab
 
 from NiimPrintX.nimmy.printer import PrinterClient
 
@@ -96,9 +97,11 @@ class LabelPrinterApp(tk.Tk):
         self.tab_control = ttk.Notebook(self)
         self.text_tab = TextTab(self.tab_control, self.app_config)
         self.icon_tab = IconTab(self.tab_control, self.app_config)
+        self.qr_code_tab = QrCodeTab(self.tab_control, self.app_config, self.icon_tab.get_image_operation())
 
         self.tab_control.add(self.text_tab.frame, text='Text')
         self.tab_control.add(self.icon_tab.frame, text='Icon')
+        self.tab_control.add(self.qr_code_tab.frame, text='QR Code')
         self.tab_control.pack(expand=1, fill='both', side=tk.TOP)
 
 

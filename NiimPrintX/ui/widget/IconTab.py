@@ -37,18 +37,17 @@ class IconTab:
         load_image = tk.Button(button_frame, text="Add Image", width=10,
                                highlightbackground=default_bg,
                                command=self.import_image)
-        delete_image = tk.Button(button_frame, text="Delete",width=10,
-                                 highlightbackground=default_bg,
-                                 command=self.image_op.delete_image)
+        delete_button = ttk.Button(button_frame, text="Delete", command=self.image_op.delete_selected_image)
+        delete_button.pack(side=tk.LEFT, padx=5)
 
         # Stack the buttons vertically
         load_image.pack(pady=5)  # Adjust padding as needed
-        delete_image.pack(pady=5)
+        delete_button.pack(pady=5)
 
         # Create the TabbedIconGrid and align it to the right
         tabbed_icon_grid = TabbedIconGrid(
             icon_tab_frame, self.config.icon_folder,
-            on_icon_selected=lambda sub_path: self.image_op.load_image(f"{self.config.icon_folder}/{sub_path}")
+            on_icon_selected=lambda sub_path: self.image_op._load_image_from_file(f"{self.config.icon_folder}/{sub_path}")
         )
 
         tabbed_icon_grid.grid(row=0, column=1, sticky='nsew', padx=10, pady=20)
