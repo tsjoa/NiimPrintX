@@ -193,12 +193,37 @@ class PrintOption:
         img_tk = ImageTk.PhotoImage(self.print_image)
 
         # Create a Label to display the image
-        self.image_label = tk.Label(popup, image=img_tk)
-        self.image_label.image = img_tk  # Keep a reference to avoid garbage collection
+        self.image_label = tk.Label(popup) # Initialize without image
         self.image_label.grid(row=0, column=0, columnspan=4, padx=10, pady=10)
 
         option_frame = tk.Frame(popup)
         option_frame.grid(row=1, column=0, columnspan=4, padx=20, pady=10, sticky="ew")
+
+        self.print_density = tk.IntVar()
+        self.print_density.set(3)
+        tk.Label(option_frame, text="Density").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        density_slider = tk.Spinbox(option_frame,
+                                    from_=1,
+                                    to=self.config.label_sizes[self.config.device]['density'],
+                                    textvariable=self.print_density,
+                                    width=4
+                                    )
+        density_slider.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(option_frame, text="Copies").grid(row=0, column=2, padx=20, pady=5, sticky="e")
+        self.print_copy = tk.IntVar()
+        self.print_copy.set(1)
+        print_copy_dropdown = tk.Spinbox(option_frame, from_=1, to=100,
+                                         textvariable=self.print_copy,
+                                         width=4
+                                         )
+        option_frame = tk.Frame(popup)
+        option_frame.grid(row=1, column=0, columnspan=4, padx=20, pady=10, sticky="ew")
+
+        self.invert_image_var = tk.BooleanVar(value=False)
+        invert_checkbox = tk.Checkbutton(option_frame, text="Invert Image", variable=self.invert_image_var, command=self._update_image_display)
+        invert_checkbox.grid(row=1, column=0, columnspan=4, padx=5, pady=5, sticky="w")
+        self._update_image_display() # Call to display the image, potentially inverted
 
         self.print_density = tk.IntVar()
         self.print_density.set(3)
@@ -283,10 +308,22 @@ class PrintOption:
         self.image_label.image = img_tk
         self.print_button.config(command=lambda: self.print_label(self.print_image, self.print_density.get(), self.print_copy.get()))
 
+    def _update_image_display(self):
+        display_image = self.print_image.copy()
+        if self.invert_image_var.get():
+            display_image = display_image.convert('L').point(lambda x: 255 - x)
+
+        img_tk = ImageTk.PhotoImage(display_image)
+        self.image_label.config(image=img_tk)
+        self.image_label.image = img_tk # Keep a reference
 
     def print_label(self, image, density, quantity):
         self.print_button.config(state=tk.DISABLED)
         self.config.print_job = True
+
+        # Apply inversion if checkbox is checked
+        if self.invert_image_var.get():
+            image = image.convert('L').point(lambda x: 255 - x)
 
         if isinstance(self.print_op.printer, BluepyPrinterClient):
             # For P15, use image printing
