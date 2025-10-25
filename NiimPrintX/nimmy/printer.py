@@ -155,7 +155,8 @@ class PrinterClient:
 
     def _encode_image(self, image: Image, vertical_offset=0, horizontal_offset=0):
         # Convert the image to monochrome
-        img = ImageOps.invert(image.convert("L")).convert("1")
+        # Inversion is now handled by the UI, so we only convert to monochrome.
+        img = image.convert("L").convert("1")
 
         # Apply horizontal offset
         if horizontal_offset > 0:
