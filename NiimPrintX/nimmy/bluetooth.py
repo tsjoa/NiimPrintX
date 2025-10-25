@@ -63,6 +63,7 @@ if platform.system() == "Linux":
                     self.peripheral.setMTU(100)
                     self.characteristic = self.peripheral.getCharacteristics(uuid=CHAR_UUID)[0]
                     logger.info(f"Connected to {self.device_address}")
+                    await asyncio.sleep(0.5) # Add a small delay after connection
                     return
                 except BTLEDisconnectError as e:
                     logger.warning(f"Connection attempt {i+1}/{retries} failed: {e}")

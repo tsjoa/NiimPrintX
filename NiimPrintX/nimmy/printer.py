@@ -300,7 +300,13 @@ class PrinterClient:
         return {"page": page, "progress1": progress1, "progress2": progress2}
 
     def __del__(self):
-        if self.transport.client.is_connected:
+        if hasattr(self.transport, 'client') and self.transport.client.is_connected:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(self.disconnect())
+            else:
+                loop.run_until_complete(self.disconnect())
+        elif isinstance(self.transport, BluepyBluetoothPrinter) and self.transport.peripheral:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 loop.create_task(self.disconnect())
@@ -427,7 +433,7 @@ class BluepyPrinterClient(PrinterClient):
 
         # Send packets in chunks
         for p in packets:
-            chunks = [p[i:i + 96] for i in range(0, len(p), 96)]
+            chunks = [p[i:i + 20] for i in range(0, len(p), 20)]
             for chunk in chunks:
                 await self.transport.write(chunk)
                 await asyncio.sleep(0.03)
@@ -473,7 +479,7 @@ class BluepyPrinterClient(PrinterClient):
 
         # Send packets in chunks
         for p in packets:
-            chunks = [p[i:i + 96] for i in range(0, len(p), 96)]
+            chunks = [p[i:i + 20] for i in range(0, len(p), 20)]
             for chunk in chunks:
                 await self.transport.write(chunk)
                 await asyncio.sleep(0.03)
