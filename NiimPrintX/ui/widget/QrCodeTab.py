@@ -50,7 +50,18 @@ class QrCodeTab:
             qr.add_data(data)
             qr.make(fit=True)
 
-            img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+            img = qr.make_image(fill_color="black", back_color="white").convert("RGBA")
+
+            # Manually make white pixels transparent
+            datas = img.getdata()
+            new_datas = []
+            for item in datas:
+                if item[0] == 255 and item[1] == 255 and item[2] == 255:
+                    new_datas.append((255, 255, 255, 0)) # Transparent white
+                else:
+                    new_datas.append(item)
+            img.putdata(new_datas)
+
             self.qr_image = img.resize((200, 200), Image.LANCZOS)
 
             # Convert PIL Image to PhotoImage for Tkinter
