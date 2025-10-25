@@ -9,10 +9,13 @@ import PIL
 import cairo
 import tempfile
 
+from NiimPrintX.nimmy.logger_config import get_logger
 from .PrinterOperation import PrinterOperation
 from NiimPrintX.nimmy.printer import BluepyPrinterClient
 
 from devtools import debug
+
+logger = get_logger()
 
 
 class PrintOption:
@@ -82,72 +85,33 @@ class PrintOption:
         self.root.after(0, lambda: self.root.status_bar.update_status(result))
 
     def display_print(self):
-        current_tab_text = self.root.tab_control.tab(self.root.tab_control.select(), "text")
-
-        if current_tab_text == "QR Code":
-            qr_image = self.root.qr_code_tab.get_qr_code_image()
-            if qr_image:
-                # Save the QR code image to a temporary file and display it
-                if self.config.os_system == "Windows":
-                    fd, tmp_file_path = tempfile.mkstemp(suffix=".png")
-                    try:
-                        qr_image.save(tmp_file_path)  # Save to file
-                        self.display_image_in_popup(tmp_file_path)  # Display in pop-up window
-                    finally:
-                        os.close(fd)  # Close the file descriptor
-                        os.remove(tmp_file_path)  # Remove the temporary file
-                else:
-                    with tempfile.NamedTemporaryFile(suffix=".png") as tmp_file:
-                        qr_image.save(tmp_file.name)  # Save to file
-                        self.display_image_in_popup(tmp_file.name)
-            else:
-                messagebox.showinfo("QR Code", "No QR Code generated yet.")
+        # Export to PNG and display it in a pop-up window
+        if self.config.os_system == "Windows":
+            # Windows-specific logic using tempfile.mkstemp()
+            fd, tmp_file_path = tempfile.mkstemp(suffix=".png")
+            try:
+                self.export_to_png(tmp_file_path)  # Save to file
+                self.display_image_in_popup(tmp_file_path)  # Display in pop-up window
+            finally:
+                os.close(fd)  # Close the file descriptor
+                os.remove(tmp_file_path)  # Remove the temporary file
         else:
-            # Existing logic for other tabs
-            if self.config.os_system == "Windows":
-                # Windows-specific logic using tempfile.mkstemp()
-                fd, tmp_file_path = tempfile.mkstemp(suffix=".png")
-                try:
-                    self.export_to_png(tmp_file_path)  # Save to file
-                    self.display_image_in_popup(tmp_file_path)  # Display in pop-up window
-                finally:
-                    os.close(fd)  # Close the file descriptor
-                    os.remove(tmp_file_path)  # Remove the temporary file
-            else:
-                with tempfile.NamedTemporaryFile(suffix=".png") as tmp_file:
-                    self.export_to_png(tmp_file.name)  # Save to file
-                    self.display_image_in_popup(tmp_file.name)
+            with tempfile.NamedTemporaryFile(suffix=".png") as tmp_file:
+                self.export_to_png(tmp_file.name)  # Save to file
+                self.display_image_in_popup(tmp_file.name)
 
     def save_image(self):
-        current_tab_text = self.root.tab_control.tab(self.root.tab_control.select(), "text")
-
-        if current_tab_text == "QR Code":
-            qr_image = self.root.qr_code_tab.get_qr_code_image()
-            if qr_image:
-                options = {
-                    'defaultextension': '.png',
-                    'filetypes': [('PNG files', '*.png')],
-                    'initialfile': 'qrcode.png',  # Specify an initial file name
-                    'title': 'Save QR Code as PNG'
-                }
-                file_path = filedialog.asksaveasfilename(**options)
-                if file_path:
-                    qr_image.save(file_path)
-                    self.display_image_in_popup(file_path)
-            else:
-                messagebox.showinfo("QR Code", "No QR Code generated yet to save.")
-        else:
-            options = {
-                'defaultextension': '.png',
-                'filetypes': [('PNG files', '*.png')],
-                'initialfile': 'niimprintx.png',  # Specify an initial file name
-                'title': 'Save as PNG'
-            }
-            # Open the save as dialog and get the selected file name
-            file_path = filedialog.asksaveasfilename(**options)
-            if file_path:
-                self.export_to_png(file_path)
-                self.display_image_in_popup(file_path)
+        options = {
+            'defaultextension': '.png',
+            'filetypes': [('PNG files', '*.png')],
+            'initialfile': 'niimprintx.png',  # Specify an initial file name
+            'title': 'Save as PNG'
+        }
+        # Open the save as dialog and get the selected file name
+        file_path = filedialog.asksaveasfilename(**options)
+        if file_path:
+            self.export_to_png(file_path)
+            self.display_image_in_popup(file_path)
 
     def mm_to_pixels(self, mm):
         inches = mm / 25.4
@@ -162,13 +126,9 @@ class PrintOption:
 
         x1, y1, x2, y2 = self.config.canvas.bbox(self.config.bounding_box)
 
-        x1 += horizontal_offset_pixels
-        y1 += vertical_offset_pixels
-        x2 += horizontal_offset_pixels
-        y2 += vertical_offset_pixels
-
         bbox_width = x2 - x1
         bbox_height = y2 - y1
+
 
         surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
         ctx = cairo.Context(surface)
