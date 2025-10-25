@@ -44,6 +44,7 @@ class CanvasSelector:
         self.label_size_option['values'] = label_sizes
         if label_sizes:
             self.label_size_option.current(0)
+            self.update_canvas_size() # Call update_canvas_size here
         else:
             self.selected_label_size.set('')
 

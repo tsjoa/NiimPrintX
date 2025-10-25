@@ -10,6 +10,7 @@ import cairo
 import tempfile
 
 from .PrinterOperation import PrinterOperation
+from NiimPrintX.nimmy.printer import BluepyPrinterClient
 
 from devtools import debug
 
@@ -277,10 +278,16 @@ class PrintOption:
         self.print_button.config(state=tk.DISABLED)
         self.config.print_job = True
 
-        image = image.rotate(-int(90), PIL.Image.NEAREST, expand=True)
-        future = asyncio.run_coroutine_threadsafe(
-            self.print_op.print(image, density, quantity), self.root.async_loop
-        )
+        if isinstance(self.print_op.printer, BluepyPrinterClient):
+            # For P15, use image printing
+            future = asyncio.run_coroutine_threadsafe(
+                self.print_op.printer.print_image_bluepy(image), self.root.async_loop
+            )
+        else:
+            image = image.rotate(-int(90), PIL.Image.NEAREST, expand=True)
+            future = asyncio.run_coroutine_threadsafe(
+                self.print_op.print(image, density, quantity), self.root.async_loop
+            )
         future.add_done_callback(lambda f: self._print_handler(f))
 
     def _print_handler(self, future):

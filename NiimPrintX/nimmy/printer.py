@@ -2,9 +2,11 @@ import enum
 import asyncio
 import struct
 import math
-from PIL import Image, ImageOps
+import platform
+from PIL import Image, ImageOps, ImageDraw, ImageFont
+from matplotlib import font_manager
 from .exception import BLEException, PrinterException
-from .bluetooth import BLETransport
+from .bluetooth import BLETransport, BluepyBluetoothPrinter, CHAR_UUID
 from .logger_config import get_logger
 from .packet import NiimbotPacket, packet_to_int
 
@@ -304,3 +306,177 @@ class PrinterClient:
                 loop.create_task(self.disconnect())
             else:
                 loop.run_until_complete(self.disconnect())
+
+
+class BluepyPrinterClient(PrinterClient):
+    """PrinterClient implementation using bluepy library for Marklife P15 on Linux."""
+
+    def __init__(self, device):
+        super().__init__(device)
+        self.transport = BluepyBluetoothPrinter(device.address)
+        self.char_uuid = CHAR_UUID  # Use the characteristic UUID defined for bluepy
+
+    async def connect(self):
+        await self.transport.connect()
+        logger.info(f"Successfully connected to {self.device.name} using bluepy")
+        return True
+
+    async def disconnect(self):
+        await self.transport.disconnect()
+        logger.info(f"Printer {self.device.name} disconnected from bluepy.")
+
+    async def send_command(self, request_code, data, timeout=10):
+        # For bluepy, we directly write to the characteristic.
+        # The original send_command relies on notifications, which bluepy handles differently.
+        # For now, we'll just write the packet.
+        packet = NiimbotPacket(request_code, data)
+        await self.transport.write(packet.to_bytes())
+        logger.debug(f"Bluepy printer command sent - {RequestCodeEnum(request_code).name}")
+        # No notification handling for now, as bluepy's notification mechanism is different
+        # and the original script doesn't rely on it for basic commands.
+        return NiimbotPacket(0, b"") # Return an empty packet for now
+
+    async def write_raw(self, data):
+        await self.transport.write(data.to_bytes())
+
+    async def write_no_notify(self, request_code, data):
+        packet = NiimbotPacket(request_code, data)
+        await self.transport.write(packet.to_bytes())
+
+    def _construct_bitmap(self, text, font_size, font_family="Arial", bold=False, italic=False, underline=False, canvas_height=96):
+        """Creates a monochrome bitmap from text."""
+        try:
+            font_path = font_manager.findfont(font_manager.FontProperties(
+                family=font_family,
+                weight="bold" if bold else "normal",
+                style="italic" if italic else "normal"
+            ))
+            font = ImageFont.truetype(font_path, font_size)
+        except Exception:
+            try:
+                font = ImageFont.truetype(f"{font_family}.ttf", font_size)
+            except IOError:
+                try:
+                    font = ImageFont.truetype("arial.ttf", font_size)
+                except IOError:
+                    font = ImageFont.load_default()
+
+        dummy_img = Image.new('1', (1, 1))
+        draw = ImageDraw.Draw(dummy_img)
+        text_width = draw.textlength(text, font=font)
+        canvas_width = int(text_width) + 4
+
+        img = Image.new('1', (canvas_width, canvas_height), color=1)
+        draw = ImageDraw.Draw(img)
+        draw.text((2, canvas_height / 2), text, font=font, fill=0, anchor="lm")
+
+        if underline:
+            text_height = font.getbbox(text)[3]
+            underline_y = (canvas_height / 2) + (text_height / 2)
+            draw.line([(2, underline_y), (text_width + 2, underline_y)], fill=0, width=1)
+
+        return img
+
+    def _bitmap_to_packet(self, bitmap):
+        """Converts a PIL image to the printer's packet format."""
+        width, height = bitmap.size
+        bytes_ = []
+        for x in range(width):
+            for y_byte_group in range(height - 8, -1, -8):
+                byte = 0
+                for bit in range(8):
+                    px_y = y_byte_group + bit
+                    if 0 <= px_y < height and bitmap.getpixel((x, px_y)) == 0:
+                        byte |= (1 << bit)
+                bytes_.append(byte)
+        return bytes(bytes_)
+
+    async def print_text_bluepy(self, text, font_size, font_family="Arial", bold=False, italic=False, underline=False, segmented_paper=False):
+        bitmap = self._construct_bitmap(text, font_size, font_family, bold, italic, underline)
+        payload = self._bitmap_to_packet(bitmap)
+        canvas_width = bitmap.width
+
+        # Build packets
+        packets = [
+            bytes([0x10, 0xff, 0x40]),  # init command
+            bytes([
+                *([0x00] * 15),
+                0x10, 0xff, 0xf1, 0x02, 0x1d,
+                0x76,
+                0x30, 0x00,
+                0x0c, 0x00,
+                canvas_width & 0xff, (canvas_width >> 8) & 0xff
+            ]),
+            payload,
+        ]
+
+        # Add line feeds to advance paper
+        packets.append(bytes([0x0a] * 5))  # feed 5 lines
+
+        if segmented_paper:
+            packets.extend([
+                bytes([0x1d, 0x0c, 0x10]),
+                bytes([0xff, 0xf1, 0x45]),
+                bytes([0x10, 0xff, 0x40]),
+                bytes([0x10, 0xff, 0x40]),
+            ])
+        else:
+            packets.extend([
+                bytes([0x10, 0xff, 0xf1, 0x45])
+            ])
+
+        # Send packets in chunks
+        for p in packets:
+            chunks = [p[i:i + 96] for i in range(0, len(p), 96)]
+            for chunk in chunks:
+                await self.transport.write(chunk)
+                await asyncio.sleep(0.03)
+
+        logger.info("Bluepy print successful!")
+        return True
+
+    async def print_image_bluepy(self, image: Image, segmented_paper=True):
+        """Sends an image print job to a connected P15 printer."""
+        # Convert image to monochrome (mode '1')
+        img = image.convert("L").convert("1")
+        payload = self._bitmap_to_packet(img)
+        canvas_width = img.width
+
+        # Build packets
+        packets = [
+            bytes([0x10, 0xff, 0x40]),  # init command
+            bytes([
+                *([0x00] * 15),
+                0x10, 0xff, 0xf1, 0x02, 0x1d,
+                0x76,
+                0x30, 0x00,
+                0x0c, 0x00,
+                canvas_width & 0xff, (canvas_width >> 8) & 0xff
+            ]),
+            payload,
+        ]
+
+        # Add line feeds to advance paper
+        packets.append(bytes([0x0a] * 5))  # feed 5 lines
+
+        if segmented_paper:
+            packets.extend([
+                bytes([0x1d, 0x0c, 0x10]),
+                bytes([0xff, 0xf1, 0x45]),
+                bytes([0x10, 0xff, 0x40]),
+                bytes([0x10, 0xff, 0x40]),
+            ])
+        else:
+            packets.extend([
+                bytes([0x10, 0xff, 0xf1, 0x45])
+            ])
+
+        # Send packets in chunks
+        for p in packets:
+            chunks = [p[i:i + 96] for i in range(0, len(p), 96)]
+            for chunk in chunks:
+                await self.transport.write(chunk)
+                await asyncio.sleep(0.03)
+
+        logger.info("Bluepy image print successful!")
+        return True

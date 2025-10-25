@@ -53,6 +53,12 @@ class AppConfig:
                     "120mm x 14mm": (120, 14),
                 },
                 "density": 3
+            },
+            "p15": {
+                "size": {
+                    "40mm x 12mm": (40, 12),
+                },
+                "density": 3
             }
         }
         self.current_label_size = None

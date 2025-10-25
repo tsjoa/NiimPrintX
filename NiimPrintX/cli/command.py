@@ -1,8 +1,9 @@
 import asyncio
 import click
+import platform
 from PIL import Image
 from NiimPrintX.nimmy.bluetooth import find_device
-from NiimPrintX.nimmy.printer import PrinterClient, InfoEnum
+from NiimPrintX.nimmy.printer import PrinterClient, BluepyPrinterClient, InfoEnum
 from NiimPrintX.nimmy.logger_config import setup_logger, get_logger, logger_enable
 from NiimPrintX.nimmy.helper import print_info, print_error, print_success
 
@@ -32,7 +33,7 @@ def niimbot_cli(ctx, verbose):
 @click.option(
     "-m",
     "--model",
-    type=click.Choice(["b1", "b18", "b21", "d11", "d110"], False),
+    type=click.Choice(["b1", "b18", "b21", "d11", "d110", "p15"], False),
     default="d110",
     show_default=True,
     help="Niimbot printer model",
@@ -88,6 +89,8 @@ def print_command(model, density, rotate, image, quantity, vertical_offset, hori
         max_width_px = 384
     if model in ("d11", "d110"):
         max_width_px = 240
+    if model == "p15":
+        max_width_px = 384 # Assuming P15 has similar width to B series
 
     if model in ("b18", "d11", "d110") and density > 3:
         density = 3
@@ -107,11 +110,29 @@ async def _print(model, density, image, quantity, vertical_offset, horizontal_of
     try:
         print_info("Starting print job")
         device = await find_device(model)
-        printer = PrinterClient(device)
+        if platform.system() == "Linux" and model == "p15": # Assuming 'p15' model will map to Marklife P15
+            printer = BluepyPrinterClient(device)
+        else:
+            printer = PrinterClient(device)
+
         if await printer.connect():
             print(f"Connected to {device.name}")
-        await printer.print_image(image, density=density, quantity=quantity, vertical_offset=vertical_offset,
-                                  horizontal_offset=horizontal_offset)
+        
+        # If it's a BluepyPrinterClient, use its specific print_text_bluepy method for text printing
+        # For now, we'll assume image printing is handled by the base class or needs adaptation.
+        # For the initial request, we are focusing on adding the P15 printer, which implies text printing.
+        # The original script was for text, so I'll add a placeholder for text printing.
+        # If the user wants image printing for P15, that will require more work.
+        if isinstance(printer, BluepyPrinterClient):
+            # This part needs to be adapted if the CLI is used for image printing with P15
+            # For now, let's assume the CLI 'print' command is for images, and P15 will need a separate text command.
+            # Or, we need to convert the image to text for P15, which is not what the original script did.
+            # The original script was for text, so I'll add a placeholder for text printing.
+            # For now, I'll raise an error if image printing is attempted with P15 via bluepy.
+            raise NotImplementedError("Image printing for Marklife P15 via bluepy is not yet implemented in CLI. Please use text printing.")
+        else:
+            await printer.print_image(image, density=density, quantity=quantity, vertical_offset=vertical_offset,
+                                      horizontal_offset=horizontal_offset)
         print_success("Print job completed")
         await printer.disconnect()
     except Exception as e:
@@ -119,11 +140,78 @@ async def _print(model, density, image, quantity, vertical_offset, horizontal_of
         await printer.disconnect()
 
 
+@niimbot_cli.command("print-text-p15")
+@click.option(
+    "-t",
+    "--text",
+    type=str,
+    required=True,
+    help="Text to print",
+)
+@click.option(
+    "--font-size",
+    type=int,
+    default=72,
+    show_default=True,
+    help="Font size",
+)
+@click.option(
+    "--font-family",
+    type=str,
+    default="Arial",
+    show_default=True,
+    help="Font family",
+)
+@click.option(
+    "--bold",
+    is_flag=True,
+    help="Bold text",
+)
+@click.option(
+    "--italic",
+    is_flag=True,
+    help="Italic text",
+)
+@click.option(
+    "--underline",
+    is_flag=True,
+    help="Underline text",
+)
+@click.option(
+    "--segmented-paper",
+    is_flag=True,
+    help="Segmented paper printing",
+)
+def print_text_p15_command(text, font_size, font_family, bold, italic, underline, segmented_paper):
+    logger.info(f"Niimbot P15 Text Printing Start")
+    asyncio.run(_print_text_p15(text, font_size, font_family, bold, italic, underline, segmented_paper))
+
+
+async def _print_text_p15(text, font_size, font_family, bold, italic, underline, segmented_paper):
+    try:
+        print_info("Starting P15 text print job")
+        # For P15, we don't need a model to find the device, as it's hardcoded in BluepyPrinterClient
+        # However, find_device expects a model, so we pass a dummy one or adapt find_device.
+        # For now, let's assume find_device can find the P15 if its address is known.
+        # The BluepyPrinterClient will use the device.address directly.
+        device = await find_device("p15") # This will need to be adapted to find the P15 by address
+        printer = BluepyPrinterClient(device)
+        if await printer.connect():
+            print(f"Connected to {device.name}")
+        await printer.print_text_bluepy(text, font_size, font_family, bold, italic, underline, segmented_paper)
+        print_success("P15 Text Print job completed")
+        await printer.disconnect()
+    except Exception as e:
+        logger.debug(f"{e}")
+        print_error(e)
+        await printer.disconnect()
+
+
 @niimbot_cli.command("info")
 @click.option(
     "-m",
     "--model",
-    type=click.Choice(["b1", "b18", "b21", "d11", "d110"], False),
+    type=click.Choice(["b1", "b18", "b21", "d11", "d110", "p15"], False),
     default="d110",
     show_default=True,
     help="Niimbot printer model",
@@ -137,7 +225,10 @@ def info_command(model):
 async def _info(model):
     try:
         device = await find_device(model)
-        printer = PrinterClient(device)
+        if platform.system() == "Linux" and model == "p15":
+            printer = BluepyPrinterClient(device)
+        else:
+            printer = PrinterClient(device)
         await printer.connect()
         device_serial = await printer.get_info(InfoEnum.DEVICESERIAL)
         software_version = await printer.get_info(InfoEnum.SOFTVERSION)

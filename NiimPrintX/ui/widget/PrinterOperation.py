@@ -1,7 +1,8 @@
+import platform
 from tkinter import messagebox
 
 from NiimPrintX.nimmy.bluetooth import find_device
-from NiimPrintX.nimmy.printer import PrinterClient
+from NiimPrintX.nimmy.printer import PrinterClient, BluepyPrinterClient
 
 from devtools import debug
 
@@ -14,13 +15,17 @@ class PrinterOperation:
     async def printer_connect(self, model):
         try:
             device = await find_device(model)
-            self.printer = PrinterClient(device)
+            if platform.system() == "Linux" and model == "p15":
+                self.printer = BluepyPrinterClient(device)
+            else:
+                self.printer = PrinterClient(device)
+
             if await self.printer.connect():
                 self.config.printer_connected = True
                 return True
         except Exception as e:
             # debug(e)
-            messagebox.showerror("Error", f"Cannot connect to printer {model}.")
+            messagebox.showerror("Error", f"Cannot connect to printer {model}.\n{e}")
             return False
 
     async def printer_disconnect(self):
