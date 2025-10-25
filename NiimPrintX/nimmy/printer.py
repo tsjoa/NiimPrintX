@@ -435,7 +435,7 @@ class BluepyPrinterClient(PrinterClient):
         logger.info("Bluepy print successful!")
         return True
 
-    async def print_image_bluepy(self, image: Image, segmented_paper=True):
+    async def print_image_bluepy(self, image: Image, segmented_paper=False):
         """Sends an image print job to a connected P15 printer."""
         # Convert image to monochrome (mode '1')
         img = image.convert("L").convert("1")
